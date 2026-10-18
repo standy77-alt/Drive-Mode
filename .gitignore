@@ -1,0 +1,19 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.jks
+*.keystore
+keystore.properties
+# Code On The Go
+.cg/
+*.txt
