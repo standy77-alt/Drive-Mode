@@ -3,7 +3,10 @@ name: Build and Release APK
 on:
   push:
     tags:
-      - 'v*' # Запустится только когда ты создашь тег, например v2.0 (или отправишь его через git push origin v2.0)
+      - 'v*'
+
+permissions:
+  contents: write # <--- ЭТА СТРОКА ДАЕТ ПРАВА НА СОЗДАНИЕ РЕЛИЗА
 
 jobs:
   build:
