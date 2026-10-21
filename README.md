@@ -1,4 +1,4 @@
-# Drive Mode (GWM / Haval)
+# Drive Mode Haval F7/F7X 
 
 Приложение для управления режимами движения (Normal, Sport, Eco, Snow, Sand, Off-road) и вывода статистики поездки на приборную панель автомобиля.
 
