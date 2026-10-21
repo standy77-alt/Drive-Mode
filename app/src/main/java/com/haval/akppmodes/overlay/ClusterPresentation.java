@@ -15,10 +15,6 @@ import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
-/**
- * Presentation-оверлей на вторичный дисплей (приборка).
- * Не затемняет приборы (FLAG_DIM_BEHIND сброшен).
- */
 public class ClusterPresentation extends Presentation {
 
     private TextView mModeTextView;

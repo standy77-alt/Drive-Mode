@@ -16,7 +16,18 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Включаем обфускацию и минификацию кода
+            isMinifyEnabled = true
+            
+            // Включаем удаление неиспользуемых ресурсов для уменьшения размера APK
+            isShrinkResources = true
+            
+            // Подключаем стандартные правила оптимизации Google + ваш личный файл правил
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            
             signingConfig = signingConfigs.getByName("debug")
         }
     }

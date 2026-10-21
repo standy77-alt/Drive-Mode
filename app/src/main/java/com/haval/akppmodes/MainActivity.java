@@ -5,16 +5,19 @@ import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -27,210 +30,327 @@ import java.util.List;
 
 public class MainActivity extends Activity {
 
-    private static final int BG = Color.parseColor("#0D1117");
-    private static final int CARD = Color.parseColor("#161B22");
-    private static final int TEXT_PRIMARY = Color.parseColor("#F0F6FC");
-    private static final int TEXT_SECONDARY = Color.parseColor("#8B949E");
-    private static final int ACCENT = Color.parseColor("#00E676");
-    private static final int ACCENT_PRESSED = Color.parseColor("#00C853");
-    private static final int STATUS_OK = Color.parseColor("#00E676");
-    private static final int STATUS_OFF = Color.parseColor("#FF5252");
+    // ===== Премиальная автомобильная палитра (OEM Dark) =====
+    private static final int BG              = Color.parseColor("#090A0F"); 
+    private static final int CARD_TOP        = Color.parseColor("#161821"); 
+    private static final int CARD_BOTTOM     = Color.parseColor("#111219"); 
+    private static final int CARD_BORDER     = Color.parseColor("#262936"); 
+
+    private static final int ITEM_OFF_BG     = Color.parseColor("#1A1C26");
+    private static final int ITEM_OFF_BORDER = Color.parseColor("#252836");
+    private static final int ITEM_ON_BG      = Color.parseColor("#19333A"); 
+    private static final int ITEM_ON_BORDER  = Color.parseColor("#3898A6"); 
+
+    private static final int TEXT_PRIMARY    = Color.parseColor("#F2F4F8");
+    private static final int TEXT_SECONDARY  = Color.parseColor("#8A90A2");
+    private static final int TEXT_MUTED      = Color.parseColor("#5C6170");
+    private static final int ACCENT          = Color.parseColor("#287D8A"); 
+    private static final int ACCENT_PRESSED  = Color.parseColor("#1D5C66");
+    private static final int BTN_SEC_BG      = Color.parseColor("#1F222E"); 
+    private static final int BTN_SEC_BORDER  = Color.parseColor("#32374A");
+
+    private static final int STATUS_OK       = Color.parseColor("#4ADE80");
+    private static final int STATUS_OFF      = Color.parseColor("#F87171");
+    private static final int WARNING_COLOR   = Color.parseColor("#FBBF24"); 
 
     private TextView mStatusTitle;
     private TextView mStatusDetail;
-    private TextView mModeValue;
     private Button mMainBtn;
+    private Button mOverlayBtn;
     private CarModeManager mCarMode;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        int pad = dp(24);
+        int pad = dp(16);
+        int padTop = dp(8); // УМЕНЬШЕН ОТСТУП СВЕРХУ
         mCarMode = new CarModeManager(this);
+
+        // УВЕЛИЧЕНЫ РАЗМЕРЫ НА ~5%
+        int colWidth       = dp(290);                     // Было 275
+        int colGap         = dp(42);                      // Было 40
+        int totalGridWidth = colWidth * 2 + colGap;       
+        int cardWidth      = totalGridWidth + dp(64);     
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
-        root.setPadding(pad, pad, pad, pad);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.setPadding(pad, padTop, pad, pad); // Применили уменьшенный верхний отступ
+        root.setGravity(Gravity.CENTER); 
 
+        // ===== Заголовок =====
         TextView title = new TextView(this);
         title.setText("DRIVE MODE");
         title.setTextColor(TEXT_PRIMARY);
-        title.setTextSize(28f);
-        title.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
+        title.setTextSize(30f); // Чуть крупнее
+        styleText(title, fontMedium(), 0.18f);
         title.setGravity(Gravity.CENTER);
-        title.setLetterSpacing(0.08f);
         root.addView(title, matchWrap());
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Управление режимами АКПП");
-        subtitle.setTextColor(ACCENT);
-        subtitle.setTextSize(18f);
-        subtitle.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
+        subtitle.setText("УПРАВЛЕНИЕ РЕЖИМАМИ ДВИЖЕНИЯ");
+        subtitle.setTextColor(TEXT_SECONDARY);
+        subtitle.setTextSize(13f);
+        styleText(subtitle, fontMedium(), 0.12f);
         subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(0, dp(4), 0, dp(20));
+        subtitle.setPadding(0, dp(4), 0, dp(12)); // Уменьшен отступ снизу
         root.addView(subtitle, matchWrap());
 
-        // Карточка статуса
+        // ===== 1. Карточка статуса =====
         LinearLayout statusCard = new LinearLayout(this);
         statusCard.setOrientation(LinearLayout.VERTICAL);
-        statusCard.setBackground(rounded(CARD, dp(16)));
-        statusCard.setPadding(dp(20), dp(16), dp(20), dp(16));
+        statusCard.setBackground(cardDrawable(dp(18)));
+        statusCard.setPadding(dp(24), dp(16), dp(24), dp(18)); 
         statusCard.setGravity(Gravity.CENTER);
 
         mStatusTitle = new TextView(this);
-        mStatusTitle.setTextSize(22f);
-        mStatusTitle.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
+        mStatusTitle.setTextSize(19f); // Было 18
+        styleText(mStatusTitle, fontMedium(), 0.06f);
         mStatusTitle.setGravity(Gravity.CENTER);
         statusCard.addView(mStatusTitle, matchWrap());
 
         mStatusDetail = new TextView(this);
         mStatusDetail.setTextColor(TEXT_SECONDARY);
-        mStatusDetail.setTextSize(18f);
-        mStatusDetail.setTypeface(Typeface.SANS_SERIF);
+        mStatusDetail.setTextSize(15f); // Было 14
+        styleText(mStatusDetail, fontRegular(), 0.02f);
         mStatusDetail.setGravity(Gravity.CENTER);
-        mStatusDetail.setPadding(0, dp(6), 0, 0);
+        mStatusDetail.setPadding(0, dp(6), 0, dp(14));
         statusCard.addView(mStatusDetail, matchWrap());
 
-        mModeValue = new TextView(this);
-        mModeValue.setTextSize(30f);
-        mModeValue.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
-        mModeValue.setGravity(Gravity.CENTER);
-        mModeValue.setPadding(0, dp(12), 0, 0);
-        statusCard.addView(mModeValue, matchWrap());
-
-        LinearLayout.LayoutParams cardLp = matchWrap();
-        cardLp.setMargins(0, 0, 0, dp(20));
-        root.addView(statusCard, cardLp);
-
-        // Кнопка «Перезапустить службу»
         mMainBtn = new Button(this);
         mMainBtn.setText("Перезапустить службу");
-        mMainBtn.setTextColor(Color.BLACK);
-        mMainBtn.setTextSize(20f);
-        mMainBtn.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
+        mMainBtn.setTextColor(TEXT_PRIMARY);
+        mMainBtn.setTextSize(16f); // Было 15
+        styleText(mMainBtn, fontMedium(), 0.03f);
         mMainBtn.setAllCaps(false);
-        mMainBtn.setBackground(rounded(ACCENT, dp(16)));
+        mMainBtn.setBackground(borderedBox(BTN_SEC_BG, BTN_SEC_BORDER, dp(10), dp(1)));
         mMainBtn.setOnClickListener(v -> {
-            mMainBtn.setBackground(rounded(ACCENT_PRESSED, dp(16)));
+            mMainBtn.setBackground(borderedBox(ACCENT_PRESSED, ITEM_ON_BORDER, dp(10), dp(1)));
             launchService();
-            mMainBtn.postDelayed(() -> mMainBtn.setBackground(rounded(ACCENT, dp(16))), 200);
+            mMainBtn.postDelayed(() -> mMainBtn.setBackground(
+                    borderedBox(BTN_SEC_BG, BTN_SEC_BORDER, dp(10), dp(1))), 180);
         });
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(72));
-        btnLp.setMargins(dp(8), 0, dp(8), dp(20));
-        root.addView(mMainBtn, btnLp);
 
-        // === БЛОК ВЫБОРА РЕЖИМОВ ===
+        LinearLayout.LayoutParams restartLp = new LinearLayout.LayoutParams(totalGridWidth, dp(48)); // Было 46
+        restartLp.gravity = Gravity.CENTER_HORIZONTAL;
+        statusCard.addView(mMainBtn, restartLp);
+
+        mOverlayBtn = new Button(this);
+        mOverlayBtn.setText("Разрешить оверлей");
+        mOverlayBtn.setTextColor(TEXT_PRIMARY);
+        mOverlayBtn.setTextSize(16f); // Было 15
+        styleText(mOverlayBtn, fontMedium(), 0.03f);
+        mOverlayBtn.setAllCaps(false);
+        mOverlayBtn.setBackground(borderedBox(BTN_SEC_BG, BTN_SEC_BORDER, dp(10), dp(1)));
+        
+        mOverlayBtn.setOnClickListener(v -> {
+            if (!Settings.canDrawOverlays(this)) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            } else {
+                Toast.makeText(this, "Разрешение уже выдано", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        LinearLayout.LayoutParams overlayLp = new LinearLayout.LayoutParams(totalGridWidth, dp(48));
+        overlayLp.gravity = Gravity.CENTER_HORIZONTAL;
+        overlayLp.setMargins(0, dp(10), 0, 0);
+        statusCard.addView(mOverlayBtn, overlayLp);
+
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
+                cardWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        statusLp.setMargins(0, 0, 0, dp(18));
+        root.addView(statusCard, statusLp);
+
+        // ===== 2. Карточка выбора режимов =====
         LinearLayout modesCard = new LinearLayout(this);
         modesCard.setOrientation(LinearLayout.VERTICAL);
-        modesCard.setBackground(rounded(CARD, dp(16)));
-        modesCard.setPadding(dp(20), dp(16), dp(20), dp(16));
-        
+        modesCard.setBackground(cardDrawable(dp(18)));
+        modesCard.setPadding(dp(24), dp(18), dp(24), dp(20));
+        modesCard.setGravity(Gravity.CENTER_HORIZONTAL);
+
         TextView modesTitle = new TextView(this);
-        modesTitle.setText("Режимы для переключения (Mute):");
-        modesTitle.setTextColor(TEXT_PRIMARY);
-        modesTitle.setTextSize(18f);
-        modesTitle.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
-        modesTitle.setPadding(0, 0, 0, dp(10));
+        modesTitle.setText("ВЫБРАТЬ РЕЖИМЫ");
+        modesTitle.setTextColor(TEXT_SECONDARY);
+        modesTitle.setTextSize(15f); // Было 14
+        styleText(modesTitle, fontMedium(), 0.12f);
+        modesTitle.setGravity(Gravity.CENTER);
+        modesTitle.setPadding(0, 0, 0, dp(14));
         modesCard.addView(modesTitle, matchWrap());
 
-        // Получаем текущие выбранные режимы
+        LinearLayout modesGrid = new LinearLayout(this);
+        modesGrid.setOrientation(LinearLayout.VERTICAL);
+        modesGrid.setGravity(Gravity.CENTER_HORIZONTAL);
+
         int[] currentSelected = mCarMode.getSelectedModes();
         DrivingMode[] allModes = DrivingMode.values();
-        CheckBox[] checkBoxes = new CheckBox[allModes.length];
-        
-        for (int i = 0; i < allModes.length; i++) {
-            DrivingMode mode = allModes[i];
-            CheckBox cb = new CheckBox(this);
-            cb.setText(mode.getTitle());
-            cb.setTextColor(TEXT_PRIMARY);
-            cb.setTextSize(18f);
-            
-            // Проверяем, выбран ли этот режим сейчас
-            for (int code : currentSelected) {
-                if (code == mode.getCode()) {
-                    cb.setChecked(true);
-                    break;
+        Switch[] switches = new Switch[allModes.length];
+
+        int[][] gridOrder = {
+                {0, 3}, // NORMAL | SNOW
+                {1, 4}, // SPORT  | SAND
+                {2, 5}  // ECO    | OFF-ROAD
+        };
+
+        for (int row = 0; row < 3; row++) {
+            LinearLayout rowLayout = new LinearLayout(this);
+            rowLayout.setOrientation(LinearLayout.HORIZONTAL);
+            rowLayout.setGravity(Gravity.CENTER);
+            rowLayout.setPadding(0, dp(6), 0, dp(6));
+
+            for (int col = 0; col < 2; col++) {
+                int index = gridOrder[row][col];
+                if (index >= allModes.length) continue;
+
+                DrivingMode mode = allModes[index];
+
+                LinearLayout item = new LinearLayout(this);
+                item.setOrientation(LinearLayout.HORIZONTAL);
+                item.setGravity(Gravity.CENTER_VERTICAL);
+                item.setPadding(dp(20), dp(14), dp(18), dp(14)); // Чуть выше стали плашки
+
+                LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(
+                        colWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+                if (col == 0) {
+                    itemLp.setMargins(0, 0, colGap / 2, 0);
+                } else {
+                    itemLp.setMargins(colGap / 2, 0, 0, 0);
                 }
+
+                TextView name = new TextView(this);
+                name.setText(mode.getTitle());
+                name.setTextSize(17f); // Было 16
+                styleText(name, fontMedium(), 0.08f);
+                name.setLayoutParams(new LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+                Switch sw = new Switch(this);
+                boolean isChecked = false;
+                for (int code : currentSelected) {
+                    if (code == mode.getCode()) {
+                        isChecked = true;
+                        break;
+                    }
+                }
+                sw.setChecked(isChecked);
+                switches[index] = sw;
+
+                applyModeItemStyle(item, name, isChecked);
+
+                sw.setOnCheckedChangeListener((buttonView, checked) ->
+                        applyModeItemStyle(item, name, checked));
+
+                item.setOnClickListener(v -> sw.toggle());
+
+                item.addView(name);
+                item.addView(sw);
+                rowLayout.addView(item, itemLp);
             }
-            checkBoxes[i] = cb;
-            modesCard.addView(cb);
+
+            modesGrid.addView(rowLayout, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
 
-        Button saveModesBtn = new Button(this);
-        saveModesBtn.setText("Сохранить");
-        saveModesBtn.setTextColor(Color.BLACK);
-        saveModesBtn.setAllCaps(false);
-        saveModesBtn.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
-        saveModesBtn.setBackground(rounded(ACCENT, dp(12)));
-        saveModesBtn.setOnClickListener(v -> {
-            List<Integer> selectedList = new ArrayList<>();
-            for (int i = 0; i < checkBoxes.length; i++) {
-                if (checkBoxes[i].isChecked()) {
-                    selectedList.add(allModes[i].getCode());
+        modesCard.addView(modesGrid, matchWrap());
+
+        // Главная акцентная кнопка Сохранить
+        Button saveBtn = new Button(this);
+        saveBtn.setText("Сохранить");
+        saveBtn.setTextColor(TEXT_PRIMARY);
+        saveBtn.setTextSize(17f); // Было 16
+        styleText(saveBtn, fontMedium(), 0.04f);
+        saveBtn.setAllCaps(false);
+        saveBtn.setBackground(borderedBox(ACCENT, ITEM_ON_BORDER, dp(12), dp(1)));
+
+        LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(totalGridWidth, dp(54)); // Было 52
+        saveLp.gravity = Gravity.CENTER_HORIZONTAL;
+        saveLp.setMargins(0, dp(18), 0, 0);
+        modesCard.addView(saveBtn, saveLp);
+
+        saveBtn.setOnClickListener(v -> {
+            saveBtn.setBackground(borderedBox(ACCENT_PRESSED, ITEM_ON_BORDER, dp(12), dp(1)));
+            saveBtn.postDelayed(() -> saveBtn.setBackground(
+                    borderedBox(ACCENT, ITEM_ON_BORDER, dp(12), dp(1))), 180);
+
+            List<Integer> selected = new ArrayList<>();
+            for (int i = 0; i < switches.length; i++) {
+                if (switches[i] != null && switches[i].isChecked()) {
+                    selected.add(allModes[i].getCode());
                 }
             }
-            if (selectedList.isEmpty()) {
+            if (selected.isEmpty()) {
                 Toast.makeText(this, "Выберите хотя бы один режим", Toast.LENGTH_SHORT).show();
                 return;
             }
-            int[] codes = new int[selectedList.size()];
-            for (int i = 0; i < codes.length; i++) codes[i] = selectedList.get(i);
-            
+            int[] codes = new int[selected.size()];
+            for (int i = 0; i < codes.length; i++) {
+                codes[i] = selected.get(i);
+            }
             mCarMode.saveSelectedModes(codes);
-            Toast.makeText(this, "Сохранено: " + selectedList.size() + " реж.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Сохранено режимов: " + selected.size(), Toast.LENGTH_SHORT).show();
         });
-        
-        LinearLayout.LayoutParams saveBtnLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(56));
-        saveBtnLp.setMargins(0, dp(12), 0, 0);
-        modesCard.addView(saveModesBtn, saveBtnLp);
 
-        LinearLayout.LayoutParams modesLp = matchWrap();
-        modesLp.setMargins(0, 0, 0, dp(20));
+        LinearLayout.LayoutParams modesLp = new LinearLayout.LayoutParams(
+                cardWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        modesLp.setMargins(0, 0, 0, dp(18));
         root.addView(modesCard, modesLp);
-        // === КОНЕЦ БЛОКА ВЫБОРА ===
 
-        // Подсказка
+        // ===== 3. Компактная карточка подсказки (УВЕЛИЧЕНА) =====
         ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
 
         TextView help = new TextView(this);
         help.setTextColor(TEXT_SECONDARY);
-        help.setTextSize(18f);
-        help.setTypeface(Typeface.SANS_SERIF);
-        help.setLineSpacing(dp(4), 1.15f);
+        help.setTextSize(15f); // БЫЛО 13f - СДЕЛАЛИ КРУПНЕЕ
+        styleText(help, fontRegular(), 0.02f);
+        help.setGravity(Gravity.CENTER);
+        help.setLineSpacing(dp(4), 1.15f); // Чуть больше межстрочный интервал
+        
         help.setText(
-                "Как пользоваться\n\n" +
-                "1. Отметьте галочками нужные вам режимы\n" +
-                "   и нажмите «Сохранить».\n\n" +
-                "2. Удерживайте ~1.5 секунды кнопку на руле:\n" +
-                "   • Mute (работает везде)\n" +
-                "   • Back (работает в режиме БК)\n" +
-                "   → переключение по кругу между\n" +
-                "     выбранными режимами.\n\n" +
-                "3. Режимы сохраняются между запусками.\n\n" +
-                "Дополнительно\n\n" +
-                "• Разрешения не требуются — программа\n" +
-                "  работает через штатный Binder-сервис.\n\n" +
-                "• Служба запускается автоматически после\n" +
-                "  перезагрузки ГУ."
-        );
-
+        "Удерживайте на руле 1 сек кнопку Mute для переключения выбранных режимов.\n" +
+        "В режиме БК короткое нажатие Back открывает статистику поездки на приборке.\n" +
+        "Внимание: для появления цифр пробега и расхода требуется начать движение.\n" +
+        "Настройки сохраняются автоматически • Работает через Binder-сервис ГУ"
+);
         LinearLayout helpBox = new LinearLayout(this);
         helpBox.setOrientation(LinearLayout.VERTICAL);
-        helpBox.setBackground(rounded(CARD, dp(16)));
-        helpBox.setPadding(dp(20), dp(16), dp(20), dp(16));
+        helpBox.setBackground(cardDrawable(dp(14)));
+        helpBox.setPadding(dp(24), dp(18), dp(24), dp(18)); // Больше отступы внутри блока
+        helpBox.setGravity(Gravity.CENTER);
         helpBox.addView(help, matchWrap());
-        scroll.addView(helpBox, matchWrap());
-        root.addView(scroll, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        scroll.addView(helpBox);
+
+        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
+                cardWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        root.addView(scroll, scrollLp);
 
         setContentView(root);
         launchService();
+    }
+
+    private void applyModeItemStyle(LinearLayout item, TextView name, boolean checked) {
+        if (checked) {
+            item.setBackground(borderedBox(ITEM_ON_BG, ITEM_ON_BORDER, dp(12), dp(1)));
+            name.setTextColor(TEXT_PRIMARY);
+        } else {
+            item.setBackground(borderedBox(ITEM_OFF_BG, ITEM_OFF_BORDER, dp(12), dp(1)));
+            name.setTextColor(TEXT_MUTED);
+        }
+    }
+
+    private static void styleText(TextView tv, Typeface tf, float letterSpacing) {
+        tv.setTypeface(tf);
+        tv.setLetterSpacing(letterSpacing);
+        tv.setPaintFlags(tv.getPaintFlags() | Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+    }
+
+    private static Typeface fontMedium() {
+        return Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    }
+
+    private static Typeface fontRegular() {
+        return Typeface.create("sans-serif", Typeface.NORMAL);
     }
 
     @Override
@@ -248,12 +368,12 @@ public class MainActivity extends Activity {
     }
 
     private void launchService() {
-        Intent serviceIntent = new Intent(this, SteeringWheelService.class);
+        Intent intent = new Intent(this, SteeringWheelService.class);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent);
+                startForegroundService(intent);
             } else {
-                startService(serviceIntent);
+                startService(intent);
             }
             Toast.makeText(this, "Служба запущена", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
@@ -264,28 +384,34 @@ public class MainActivity extends Activity {
 
     private void updateStatus() {
         boolean running = isServiceRunning(SteeringWheelService.class);
+        boolean hasOverlay = Settings.canDrawOverlays(this);
 
         if (running) {
             mStatusTitle.setText("●  СЛУЖБА АКТИВНА");
             mStatusTitle.setTextColor(STATUS_OK);
-            mStatusDetail.setText("Удерживайте Mute / Back на руле");
+            mStatusDetail.setText("Удерживайте Mute / Нажмите Back на руле");
         } else {
             mStatusTitle.setText("●  СЛУЖБА ОСТАНОВЛЕНА");
             mStatusTitle.setTextColor(STATUS_OFF);
-            mStatusDetail.setText("Нажмите «Перезапустить службу»");
+            mStatusDetail.setText("Нажмите кнопку ниже для запуска службы");
         }
 
-        DrivingMode mode = mCarMode.getCurrentMode();
-        mModeValue.setText(mode.getTitle());
-        // Подсвечиваем зеленым, если режим не NORMAL
-        mModeValue.setTextColor(mode == DrivingMode.STANDARD ? TEXT_PRIMARY : ACCENT);
+        if (hasOverlay) {
+            mOverlayBtn.setText("Оверлей разрешен ✓");
+            mOverlayBtn.setTextColor(STATUS_OK);
+            mOverlayBtn.setBackground(borderedBox(BTN_SEC_BG, STATUS_OK, dp(10), dp(1)));
+        } else {
+            mOverlayBtn.setText("Разрешить оверлей ⚠️");
+            mOverlayBtn.setTextColor(WARNING_COLOR);
+            mOverlayBtn.setBackground(borderedBox(BTN_SEC_BG, WARNING_COLOR, dp(10), dp(1)));
+        }
     }
 
     private boolean isServiceRunning(Class<?> serviceClass) {
         ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         if (am == null) return false;
-        for (ActivityManager.RunningServiceInfo service : am.getRunningServices(Integer.MAX_VALUE)) {
-            if (serviceClass.getName().equals(service.service.getClassName())) {
+        for (ActivityManager.RunningServiceInfo s : am.getRunningServices(Integer.MAX_VALUE)) {
+            if (serviceClass.getName().equals(s.service.getClassName())) {
                 return true;
             }
         }
@@ -302,10 +428,21 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
-    private static GradientDrawable rounded(int color, float radiusPx) {
+    private GradientDrawable cardDrawable(float radius) {
+        GradientDrawable d = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{CARD_TOP, CARD_BOTTOM}
+        );
+        d.setCornerRadius(radius);
+        d.setStroke(dp(1), CARD_BORDER);
+        return d;
+    }
+
+    private static GradientDrawable borderedBox(int bgColor, int borderColor, float radius, int strokeWidth) {
         GradientDrawable d = new GradientDrawable();
-        d.setColor(color);
-        d.setCornerRadius(radiusPx);
+        d.setColor(bgColor);
+        d.setCornerRadius(radius);
+        d.setStroke(strokeWidth, borderColor);
         return d;
     }
 }
