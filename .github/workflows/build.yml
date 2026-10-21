@@ -1,9 +1,9 @@
-name: Build Android APK
+name: Build and Release APK
 
 on:
   push:
-    branches: [ main, master ]
-  workflow_dispatch: # Позволяет запускать сборку вручную
+    tags:
+      - 'v*' # Запустится только когда ты создашь тег, например v2.0 (или отправишь его через git push origin v2.0)
 
 jobs:
   build:
@@ -27,8 +27,9 @@ jobs:
         chmod +x gradlew
         ./gradlew assembleDebug
 
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
+    - name: Create Release and Upload APK
+      uses: softprops/action-gh-release@v1
       with:
-        name: DriveMode-Debug-APK
-        path: app/build/outputs/apk/debug/app-debug.apk
+        files: app/build/outputs/apk/debug/app-debug.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
