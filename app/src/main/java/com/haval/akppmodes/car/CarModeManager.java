@@ -7,22 +7,28 @@ import android.os.Parcel;
 import android.util.Log;
 
 import java.lang.reflect.Method;
-import java.util.Arrays;
 
-/**
- * Управление режимом АКПП через gwm_adapter.
- *
- * setData (tx=2): spoof packageName=vehicle.center (у него SET_DATA granted=true).
- * getData (tx=1): тот же spoof (иначе Permission Denial).
- * register (tx=3): spoof + GwmDataListener (push sys.other.keyevent_notify).
- * unregister (tx=4): spoof + тот же listener.
- */
 public class CarModeManager {
 
     private static final String TAG = "CarModeManager";
 
     private static final String KEY_DRIVE_MODE = "car.drive_setting.drive_mode";
+    private static final String KEY_STEERING_MODE = "car.drive_setting.steering_wheel_assist_mode"; // Ключ руля
     private static final String KEY_EVENT = "sys.other.keyevent_notify";
+
+    public static final String KEY_JOURNEY_ODO = "car.basic.cur_journey_odometer";
+    public static final String KEY_TOTAL_ODO   = "car.basic.total_odometer";
+    public static final String KEY_AVG_FUEL_A  = "car.basic.cur_journey_avg_fuel_consumption_a";
+    public static final String KEY_AVG_FUEL_B  = "car.basic.avg_fuel_consumption";
+
+    private static final String[] MONITORED_KEYS = new String[] {
+            KEY_EVENT,
+            KEY_JOURNEY_ODO,
+            KEY_TOTAL_ODO,
+            KEY_AVG_FUEL_A,
+            KEY_AVG_FUEL_B,
+            KEY_STEERING_MODE
+    };
 
     private static final String ADAPTER = "gwm_adapter";
     private static final String DESCRIPTOR = "com.gwm.android.adapter.IGwmAdapterService";
@@ -35,8 +41,13 @@ public class CarModeManager {
 
     private static final String PREFS = "drive_mode_prefs";
     private static final String PREF_LAST_MODE = "last_mode_code";
-    // Новые константы для сохранения выбранных режимов (по умолчанию 0,1 = Normal, Sport)
     private static final String PREF_SELECTED_MODES = "selected_modes";
+    private static final String PREF_BACK_KEY_ENABLED = "back_key_trip_enabled"; 
+    
+    // НАСТРОЙКИ ДЛЯ РУЛЯ
+    private static final String PREF_STEERING_SYNC = "steering_sync_enabled";
+    private static final String PREF_FIXED_STEERING_MODE = "fixed_steering_mode";
+    
     private static final String DEFAULT_SELECTED_MODES = "0,1";
 
     private final Context context;
@@ -70,47 +81,36 @@ public class CarModeManager {
         return binder != null;
     }
 
-    // ============================================================
-    //  ЗАПИСЬ (setData, tx=2)
-    // ============================================================
-
     public void applyMode(DrivingMode mode) {
         if (mode == null) return;
         String value = String.valueOf(mode.getCode());
-        Log.i(TAG, "applyMode " + mode.getTitle() + " code=" + value);
+        if (!ensureBinder()) return;
 
-        if (!ensureBinder()) {
-            Log.e(TAG, "applyMode: no binder");
-            return;
-        }
-
-        if (setDataTx(value)) {
-            Log.i(TAG, "SUCCESS setData drive_mode=" + value);
+        if (setDataTx(KEY_DRIVE_MODE, value)) {
             saveModeToPrefs(mode.getCode());
-        } else {
-            Log.e(TAG, "FAILED setData drive_mode=" + value);
         }
     }
 
-    private boolean setDataTx(String value) {
+    public void applySteeringMode(int modeCode) {
+        if (!ensureBinder()) return;
+        setDataTx(KEY_STEERING_MODE, String.valueOf(modeCode));
+        Log.i(TAG, "Applied steering mode: " + modeCode);
+    }
+
+    private boolean setDataTx(String key, String value) {
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
         try {
             data.writeInterfaceToken(DESCRIPTOR);
             data.writeInt(1);
             data.writeString(SPOOF_PKG);
-            data.writeStringArray(new String[]{KEY_DRIVE_MODE});
+            data.writeStringArray(new String[]{key});
             data.writeStringArray(new String[]{value});
             data.writeInt(0);
 
             boolean ok = binder.transact(TX_SET_DATA, data, reply, 0);
-            if (!ok) {
-                Log.e(TAG, "setData transact false");
-                return false;
-            }
+            if (!ok) return false;
             reply.readException();
-            int result = reply.dataAvail() >= 4 ? reply.readInt() : 0;
-            Log.i(TAG, "setData reply result=" + result);
             return true;
         } catch (Exception e) {
             Log.e(TAG, "setData exception: " + e);
@@ -121,12 +121,8 @@ public class CarModeManager {
         }
     }
 
-    // ============================================================
-    //  ЧТЕНИЕ (getData, tx=1)
-    // ============================================================
-
-    public String readKey(String key) {
-        if (!ensureBinder()) return null;
+    public String[] readKeys(String[] keys) {
+        if (!ensureBinder() || keys == null || keys.length == 0) return null;
 
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
@@ -134,67 +130,17 @@ public class CarModeManager {
             data.writeInterfaceToken(DESCRIPTOR);
             data.writeInt(1);
             data.writeString(SPOOF_PKG);
-            data.writeStringArray(new String[]{key});
-            data.writeStringArray(new String[0]);
+            data.writeStringArray(keys);
+            data.writeStringArray(null); 
             data.writeInt(1);
 
-            boolean ok = binder.transact(TX_GET_DATA, data, reply, 0);
-            if (!ok) {
-                Log.w(TAG, "getData transact false key=" + key);
+            if (!binder.transact(TX_GET_DATA, data, reply, 0)) {
                 return null;
             }
             reply.readException();
-
-            int avail = reply.dataAvail();
-            if (avail == 0) {
-                Log.w(TAG, "getData empty reply for key=" + key);
-                return null;
-            }
-
-            int startPos = reply.dataPosition();
-
-            try {
-                reply.setDataPosition(startPos);
-                String[] arr = reply.createStringArray();
-                if (arr != null && arr.length > 0) {
-                    String v = arr[0] != null ? arr[0] : "";
-                    Log.i(TAG, "getData String[] key=" + key + " -> " + v);
-                    return v;
-                }
-            } catch (Exception ignored) {}
-
-            try {
-                reply.setDataPosition(startPos);
-                String s = reply.readString();
-                if (s != null) {
-                    Log.i(TAG, "getData String key=" + key + " -> " + s);
-                    return s;
-                }
-            } catch (Exception ignored) {}
-
-            try {
-                reply.setDataPosition(startPos);
-                int[] ints = reply.createIntArray();
-                if (ints != null && ints.length > 0) {
-                    String v = Arrays.toString(ints);
-                    Log.i(TAG, "getData int[] key=" + key + " -> " + v);
-                    return v;
-                }
-            } catch (Exception ignored) {}
-
-            try {
-                reply.setDataPosition(startPos);
-                int i = reply.readInt();
-                String v = Integer.toString(i);
-                Log.i(TAG, "getData int key=" + key + " -> " + v);
-                return v;
-            } catch (Exception ignored) {}
-
-            Log.w(TAG, "getData: unknown format key=" + key + " avail=" + avail);
-            return null;
-
+            return reply.createStringArray();
         } catch (Exception e) {
-            Log.e(TAG, "getData exception key=" + key + ": " + e);
+            Log.e(TAG, "readKeys exception: " + e);
             return null;
         } finally {
             data.recycle();
@@ -202,24 +148,18 @@ public class CarModeManager {
         }
     }
 
-    public String testReadKeyEvent() {
-        String v = readKey(KEY_EVENT);
-        Log.i(TAG, "testReadKeyEvent [" + KEY_EVENT + "] = " + v);
-        return v;
+    public String readKey(String key) {
+        String[] res = readKeys(new String[]{key});
+        if (res != null && res.length > 0) {
+            return res[0];
+        }
+        return null;
     }
 
-    // ============================================================
-    //  ПОДПИСКА (register, tx=3)
-    // ============================================================
-
     public boolean testSubscribeKeyEvents(GwmDataListener.Callback cb) {
-        if (!ensureBinder()) {
-            Log.e(TAG, "subscribe: no binder");
-            return false;
-        }
+        if (!ensureBinder()) return false;
 
         keyListener = new GwmDataListener((key, value) -> {
-            Log.i(TAG, "PUSH key=" + key + " value=" + value);
             if (cb != null) cb.onDataChanged(key, value);
         });
 
@@ -228,20 +168,15 @@ public class CarModeManager {
         try {
             data.writeInterfaceToken(DESCRIPTOR);
             data.writeString(SPOOF_PKG);
-            data.writeStringArray(new String[]{KEY_EVENT});
+            data.writeStringArray(MONITORED_KEYS);
             data.writeStrongBinder(keyListener);
 
             boolean ok = binder.transact(TX_REGISTER, data, reply, 0);
-            if (!ok) {
-                Log.e(TAG, "register transact false");
-                return false;
-            }
+            if (!ok) return false;
             reply.readException();
             int result = reply.dataAvail() >= 4 ? reply.readInt() : 0;
-            Log.i(TAG, "register reply result=" + result);
             registered = (result == 1 || result == 0);
             return registered;
-
         } catch (Exception e) {
             Log.e(TAG, "register exception: " + e);
             return false;
@@ -251,14 +186,8 @@ public class CarModeManager {
         }
     }
 
-    // ============================================================
-    //  ОТПИСКА (unregister, tx=4)
-    // ============================================================
-
     public void unregister() {
-        if (!registered) return;
-        if (binder == null || !binder.isBinderAlive()) return;
-        if (keyListener == null) return;
+        if (!registered || binder == null || !binder.isBinderAlive() || keyListener == null) return;
 
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
@@ -266,17 +195,10 @@ public class CarModeManager {
             data.writeInterfaceToken(DESCRIPTOR);
             data.writeString(SPOOF_PKG);
             data.writeStrongBinder(keyListener);
-
-            boolean ok = binder.transact(TX_UNREGISTER, data, reply, 0);
-            if (!ok) {
-                Log.w(TAG, "unregister transact false");
-                return;
+            if (binder.transact(TX_UNREGISTER, data, reply, 0)) {
+                reply.readException();
             }
-            reply.readException();
-            int result = reply.dataAvail() >= 4 ? reply.readInt() : 0;
-            Log.i(TAG, "unregister reply result=" + result);
-        } catch (Exception e) {
-            Log.w(TAG, "unregister exception: " + e);
+        } catch (Exception ignored) {
         } finally {
             registered = false;
             data.recycle();
@@ -284,11 +206,6 @@ public class CarModeManager {
         }
     }
 
-    // ============================================================
-    //  НОВОЕ: Работа с выбранными режимами (галочки)
-    // ============================================================
-
-    /** Возвращает массив кодов выбранных пользователем режимов */
     public int[] getSelectedModes() {
         String saved = prefs.getString(PREF_SELECTED_MODES, DEFAULT_SELECTED_MODES);
         if (saved == null || saved.isEmpty()) saved = DEFAULT_SELECTED_MODES;
@@ -296,11 +213,9 @@ public class CarModeManager {
         int[] result = new int[parts.length];
         int count = 0;
         for (String p : parts) {
-            try {
-                result[count++] = Integer.parseInt(p.trim());
-            } catch (NumberFormatException ignored) {}
+            try { result[count++] = Integer.parseInt(p.trim()); } catch (NumberFormatException ignored) {}
         }
-        if (count == 0) return new int[]{0, 1}; // Fallback
+        if (count == 0) return new int[]{0, 1};
         if (count < result.length) {
             int[] trimmed = new int[count];
             System.arraycopy(result, 0, trimmed, 0, count);
@@ -309,7 +224,6 @@ public class CarModeManager {
         return result;
     }
 
-    /** Сохраняет массив кодов выбранных режимов */
     public void saveSelectedModes(int[] codes) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < codes.length; i++) {
@@ -317,14 +231,11 @@ public class CarModeManager {
             sb.append(codes[i]);
         }
         prefs.edit().putString(PREF_SELECTED_MODES, sb.toString()).apply();
-        Log.i(TAG, "Saved selected modes: " + sb.toString());
     }
 
-    /** Вычисляет следующий режим из списка выбранных */
     public DrivingMode getNextSelectedMode(DrivingMode current) {
         int[] selected = getSelectedModes();
         if (selected.length == 0) return current;
-
         int currentIdx = -1;
         for (int i = 0; i < selected.length; i++) {
             if (selected[i] == current.getCode()) {
@@ -332,42 +243,46 @@ public class CarModeManager {
                 break;
             }
         }
-
-        // Если текущий режим не в списке, переключаем на первый из списка
-        if (currentIdx == -1) {
-            return DrivingMode.fromCode(selected[0]);
-        }
-
-        // Иначе берем следующий по кругу
-        int nextIdx = (currentIdx + 1) % selected.length;
-        return DrivingMode.fromCode(selected[nextIdx]);
+        if (currentIdx == -1) return DrivingMode.fromCode(selected[0]);
+        return DrivingMode.fromCode(selected[(currentIdx + 1) % selected.length]);
     }
-
-    // ============================================================
-    //  SharedPreferences (базовые)
-    // ============================================================
 
     public DrivingMode getCurrentMode() {
         int saved = prefs.getInt(PREF_LAST_MODE, 0);
-        DrivingMode mode = DrivingMode.fromCode(saved);
-        Log.i(TAG, "getCurrentMode (from prefs) -> " + mode.getTitle()
-                + " (code=" + saved + ")");
-        return mode;
+        return DrivingMode.fromCode(saved);
     }
 
     public void resetToStandard() {
         saveModeToPrefs(DrivingMode.STANDARD.getCode());
-        Log.i(TAG, "resetToStandard");
     }
 
     private void saveModeToPrefs(int code) {
         prefs.edit().putInt(PREF_LAST_MODE, code).apply();
-        Log.i(TAG, "Saved mode to prefs: " + code);
     }
 
-    // ============================================================
-    //  destroy
-    // ============================================================
+    public boolean isBackKeyTripEnabled() {
+        return prefs.getBoolean(PREF_BACK_KEY_ENABLED, true);
+    }
+
+    public void setBackKeyTripEnabled(boolean enabled) {
+        prefs.edit().putBoolean(PREF_BACK_KEY_ENABLED, enabled).apply();
+    }
+
+    public boolean isSteeringSyncEnabled() {
+        return prefs.getBoolean(PREF_STEERING_SYNC, true);
+    }
+
+    public void setSteeringSyncEnabled(boolean enabled) {
+        prefs.edit().putBoolean(PREF_STEERING_SYNC, enabled).apply();
+    }
+
+    public int getFixedSteeringMode() {
+        return prefs.getInt(PREF_FIXED_STEERING_MODE, 1);
+    }
+
+    public void setFixedSteeringMode(int modeCode) {
+        prefs.edit().putInt(PREF_FIXED_STEERING_MODE, modeCode).apply();
+    }
 
     public void destroy() {
         unregister();
